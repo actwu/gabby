@@ -13,13 +13,13 @@
 }
 html, body {height:100%; margin:0; background:var(--bg); color:var(--muted);}
 * {box-sizing:border-box;}
-#loader {position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; z-index:9999;}
+#loader {position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,1); z-index:9999;}
 .loader-box {display:flex; flex-direction:column; align-items:center; gap:10px;}
 .logo-G {font-size:72px; font-weight:800; color:var(--text); opacity:0.3; animation:logoBubble 1.8s cubic-bezier(.68,-0.55,.27,1.55) forwards;}
 .loader-tag {font-size:18px; color:var(--muted); opacity:0; animation:tagFadeIn 0.8s ease forwards; animation-delay:1.8s;}
-@keyframes logoBubble {0% {transform:scale(0.5)} 50% {transform:scale(1.2)} 100% {transform:scale(1)}}
+@keyframes logoBubble {0% {transform:scale(0.5) translateY(0); opacity:0.3;} 50% {transform:scale(1.2) translateY(-10px); opacity:0.6;} 100% {transform:scale(1) translateY(0); opacity:1;}}
 @keyframes tagFadeIn {from {opacity:0; transform:translateY(8px);} to {opacity:1; transform:translateY(0);}}
-@keyframes loaderExit {from {opacity:1;} to {opacity:0; transform:translateY(-50px);}}
+@keyframes loaderExit {from {transform:translateY(0); opacity:1;} to {transform:translateY(-50px); opacity:0;}}
 .app-shell {display:flex; flex-direction:column; height:100vh; width:100%;}
 .video-wrap {flex:7; position:relative; margin:10px; border-radius:15px; overflow:hidden; background:#111;}
 video, canvas {width:100%; height:100%; object-fit:cover; border-radius:15px; position:absolute; top:0; left:0;}
@@ -30,43 +30,9 @@ video, canvas {width:100%; height:100%; object-fit:cover; border-radius:15px; po
 .bubble.gabby {align-self:flex-start; background:rgba(255,255,255,0.05); color:var(--muted);}
 .bubble.user {align-self:flex-end; background:#222; color:#fff;}
 .action-buttons {position:absolute; bottom:20px; right:20px; display:flex; gap:10px;}
-.action-buttons button {background:var(--text); color:#000; border:none; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+.action-buttons button {background:var(--text); color:#000; border:none; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.5);}
 .action-buttons .material-icons {font-size:32px;}
 #awakeDot {position:absolute; top:20px; left:20px; width:16px; height:16px; border-radius:50%; background:blue; box-shadow:0 0 8px blue; opacity:0;}
-</style>
-</head>
-<body>
-<div id="loader">
-  <div class="loader-box" id="loaderBox">
-    <div class="logo-G" id="logoG">G</div>
-    <div class="loader-tag">Gabby ang ’yong gabay</div>
-  </div>
-</div>
-<div class="app-shell">
-  <div class="video-wrap">
-    <video id="camera" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-    <div class="watermark">G</div>
-    <div id="awakeDot"></div>
-    <div class="action-buttons">
-      <button id="toggleScan"><span class="material-icons">pause</span></button>
-    </div>
-  </div>
-  <div class="chat-wrap" aria-live="polite">
-    <div class="messages" id="messages"></div>
-  </div>
-</div>
-
-<!-- Models -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
-
-<script>
-// Loader
-const loader=document.getElementById('loader');
-setTimeout(()=>{loader.style.animation='loaderExit .6s forwards';loader.addEventListener('animationend',()=>loader.style#awakeDot {position:absolute; top:20px; left:20px; width:16px; height:16px; border-radius:50%; background:blue; box-shadow:0 0 8px blue; opacity:0;}
-
 </style>
 </head>
 <body>
@@ -93,8 +59,11 @@ setTimeout(()=>{loader.style.animation='loaderExit .6s forwards';loader.addEvent
   </div>
 </div>
 
+<!-- AI Models -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+
 <script>
 // Loader animation
 const loader = document.getElementById('loader');
@@ -114,16 +83,7 @@ function addBubble(text, who='gabby') {
   messages.scrollTop = messages.scrollHeight;
 }
 
-// Local storage for safety events
-function saveEvent(event) {
-  let events = JSON.parse(localStorage.getItem('safetyEvents') || '[]');
-  const timestamp = new Date().toISOString();
-  events.unshift({...event, timestamp});
-  if(events.length > 50) events.pop();
-  localStorage.setItem('safetyEvents', JSON.stringify(events));
-}
-
-// User greeting
+// Greeting
 let userName = localStorage.getItem('userName');
 if(!userName){
   userName = prompt("Hello! What's your name?");
@@ -137,11 +97,11 @@ const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
 const awakeDot = document.getElementById('awakeDot');
 
-let model;
+let cocoModel, faceModel;
 let scanning = true;
 let speaking = false;
 
-// Start camera + AI
+// Start AI
 async function startAI() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -157,40 +117,26 @@ async function startAI() {
     return;
   }
 
-  model = await cocoSsd.load();
-  addBubble("TensorFlow AI loaded!", "gabby");
+  cocoModel = await cocoSsd.load({base:'lite_mobilenet_v2'});
+  faceModel = await blazeface.load();
+
+  addBubble("COCO + Face model loaded!", "gabby");
   detectFrame();
 }
 
-// Toggle scanning (manual button)
+// Toggle scanning
 document.getElementById('toggleScan').addEventListener('click', toggleScanning);
-
-// Shared toggle function
 function toggleScanning(from="button") {
   scanning = !scanning;
   video.paused ? video.play() : video.pause();
   document.getElementById('toggleScan').innerHTML =
     `<span class="material-icons">${video.paused ? 'play_arrow' : 'pause'}</span>`;
   addBubble(scanning ? `Scanning resumed (${from}).` : `Scanning paused (${from}).`, "gabby");
-
   const utter = new SpeechSynthesisUtterance(scanning ? "Scanning resumed" : "Scanning paused");
   speechSynthesis.speak(utter);
 }
 
-// Shake detection
-let lastShake = Date.now();
-window.addEventListener("devicemotion", (event) => {
-  const acc = event.accelerationIncludingGravity;
-  if (!acc) return;
-  const strength = Math.sqrt((acc.x||0)**2 + (acc.y||0)**2 + (acc.z||0)**2);
-  const now = Date.now();
-  if (strength > 18 && now - lastShake > 1500) { // threshold + debounce
-    lastShake = now;
-    toggleScanning("shake");
-  }
-});
-
-// Overlay drawing
+// Draw overlay
 function drawOverlay(predictions){
   if(video.videoWidth && video.videoHeight){
     canvas.width = video.videoWidth;
@@ -199,24 +145,34 @@ function drawOverlay(predictions){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   predictions.forEach(p => {
-    ctx.strokeStyle = `rgba(0,0,255,${p.score})`;
+    if(p.score < 0.5) return;
+    const isObstacle = obstacleClasses.includes(p.class);
+    ctx.strokeStyle = isObstacle ? "rgba(255,0,0,0.8)" : "rgba(0,0,255,0.6)";
     ctx.lineWidth = 3;
     ctx.strokeRect(...p.bbox);
 
-    ctx.fillStyle = `rgba(255,255,255,${p.score})`;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = '18px Poppins';
-    ctx.fillText(`${p.class} (${(p.score*100).toFixed(1)}%)`,
+    ctx.fillText(`${p.class} ${(p.score*100).toFixed(1)}%`,
                  p.bbox[0], p.bbox[1] > 20 ? p.bbox[1]-5 : 10);
   });
 }
 
-// Navigation guidance
+// Obstacle classes
+const obstacleClasses = [
+  "person","car","bus","truck","bicycle","motorcycle","bench","chair","couch",
+  "potted plant","bed","dining table","tv","refrigerator","door","wall","sink","face"
+];
+
+// Guidance
 function giveGuidance(predictions){
   if(speaking) return;
+  const obstacles = predictions.filter(p=>p.score>=0.5 && obstacleClasses.includes(p.class));
+  if(!obstacles.length) return;
   speaking = true;
 
   const instructions = [];
-  predictions.forEach(p=>{
+  obstacles.forEach(p=>{
     const xCenter = p.bbox[0] + p.bbox[2]/2;
     let dir = 'ahead';
     if(xCenter < canvas.width/3) dir = 'on your left';
@@ -225,25 +181,44 @@ function giveGuidance(predictions){
     let warning = '';
     if(Math.max(p.bbox[2], p.bbox[3]) > 150) warning = ', it is close';
 
-    instructions.push(`There's something ${dir}${warning}. Be careful.`);
+    instructions.push(`Caution: ${p.class} ${dir}${warning}.`);
   });
 
   instructions.forEach((instr, i)=>{
     setTimeout(()=>{
-      const utter = new SpeechSynthesisUtterance(instr.replace('Mom', userName));
+      const utter = new SpeechSynthesisUtterance(instr);
       speechSynthesis.speak(utter);
-    }, i*2000);
+      navigator.vibrate([200,100,200]);
+    }, i*2500);
   });
 
-  setTimeout(()=>speaking=false, instructions.length*2000);
+  setTimeout(()=>speaking=false, instructions.length*2500);
 }
 
 // Frame detection
 async function detectFrame(){
   if(!scanning) return requestAnimationFrame(detectFrame);
-  const predictions = await model.detect(video);
+
+  // Run both models
+  const cocoPreds = await cocoModel.detect(video);
+  const faces = await faceModel.estimateFaces(video, false);
+
+  const facePreds = faces.map(f => ({
+    class: "face",
+    score: f.probability ? f.probability[0] : 0.99,
+    bbox: [
+      f.topLeft[0],
+      f.topLeft[1],
+      f.bottomRight[0]-f.topLeft[0],
+      f.bottomRight[1]-f.topLeft[1]
+    ]
+  }));
+
+  const predictions = [...cocoPreds, ...facePreds];
+
   drawOverlay(predictions);
   giveGuidance(predictions);
+
   requestAnimationFrame(detectFrame);
 }
 
