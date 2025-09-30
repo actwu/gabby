@@ -13,7 +13,7 @@
 <link rel="preload" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd">
 <link rel="preload" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface">
   
-  <style>
+<style>
 :root {
   --bg:#000; --muted:#b6b6b6; --text:#fff;
   font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
@@ -27,15 +27,42 @@ html, body {height:100%; margin:0; background:var(--bg); color:var(--muted);}
 @keyframes logoBubble {0% {transform:scale(0.5) translateY(0); opacity:0.3;} 50% {transform:scale(1.2) translateY(-10px); opacity:0.6;} 100% {transform:scale(1) translateY(0); opacity:1;}}
 @keyframes tagFadeIn {from {opacity:0; transform:translateY(8px);} to {opacity:1; transform:translateY(0);}}
 @keyframes loaderExit {from {transform:translateY(0); opacity:1;} to {transform:translateY(-50px); opacity:0;}}
-.app-shell {display:flex; flex-direction:column; height:100vh; width:100%;}
-.video-wrap {flex:7; position:relative; margin:10px; border-radius:15px; overflow:hidden; background:#111;}
+
+.app-shell {
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+  width:100%;
+}
+
+.video-wrap, .chat-wrap {
+  flex:1;
+  min-height:20%;
+  max-height:80%;
+  transition:flex 0.4s ease, min-height 0.4s ease, max-height 0.4s ease;
+  cursor:pointer;
+}
+
+.video-wrap.expanded {
+  flex:4;
+  min-height:80%;
+  max-height:100%;
+}
+
+.chat-wrap.expanded {
+  flex:4;
+  min-height:80%;
+  max-height:100%;
+}
+
+.video-wrap {position:relative; margin:10px; border-radius:15px; overflow:hidden; background:#111;}
 video, canvas {width:100%; height:100%; object-fit:cover; border-radius:15px; position:absolute; top:0; left:0;}
 .watermark {position:absolute; top:10px; left:10px; font-weight:700; font-size:24px; color:#fff; opacity:0.5; pointer-events:none;}
-.chat-wrap {flex:3; display:flex; flex-direction:column; border-top:1px solid #222; padding:8px; overflow:hidden;}
 .messages {flex:1; overflow:auto; display:flex; flex-direction:column; gap:8px; padding:4px;}
 .bubble {padding:10px 14px; border-radius:14px; max-width:85%; line-height:1.35;}
 .bubble.gabby {align-self:flex-start; background:rgba(255,255,255,0.05); color:var(--muted);}
 .bubble.user {align-self:flex-end; background:#222; color:#fff;}
+.chat-wrap {display:flex; flex-direction:column; border-top:1px solid #222; padding:8px; overflow:hidden;}
 .action-buttons {position:absolute; bottom:20px; right:20px; display:flex; gap:10px;}
 .action-buttons button {background:var(--text); color:#000; border:none; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.5);}
 .action-buttons .material-icons {font-size:32px;}
@@ -52,7 +79,7 @@ video, canvas {width:100%; height:100%; object-fit:cover; border-radius:15px; po
 </div>
 
 <div class="app-shell" id="app">
-  <div class="video-wrap">
+  <div class="video-wrap" id="videoWrap">
     <video id="camera" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
     <div class="watermark">G</div>
@@ -61,7 +88,7 @@ video, canvas {width:100%; height:100%; object-fit:cover; border-radius:15px; po
       <button id="toggleScan"><span class="material-icons">pause</span></button>
     </div>
   </div>
-  <div class="chat-wrap" aria-live="polite">
+  <div class="chat-wrap" id="chatWrap" aria-live="polite">
     <div class="messages" id="messages"></div>
   </div>
 </div>
@@ -97,6 +124,20 @@ if(!userName){
   localStorage.setItem('userName', userName || "User");
 }
 addBubble(`I woke up, ${userName}!`, "gabby");
+
+// Expand/collapse logic
+const videoWrap = document.getElementById('videoWrap');
+const chatWrap = document.getElementById('chatWrap');
+
+videoWrap.addEventListener('click', () => {
+  videoWrap.classList.add('expanded');
+  chatWrap.classList.remove('expanded');
+});
+
+chatWrap.addEventListener('click', () => {
+  chatWrap.classList.add('expanded');
+  videoWrap.classList.remove('expanded');
+});
 
 // Video & Canvas
 const video = document.getElementById('camera');
@@ -206,7 +247,6 @@ function giveGuidance(predictions){
 async function detectFrame(){
   if(!scanning) return requestAnimationFrame(detectFrame);
 
-  // Run both models
   const cocoPreds = await cocoModel.detect(video);
   const faces = await faceModel.estimateFaces(video, false);
 
