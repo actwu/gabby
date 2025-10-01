@@ -223,8 +223,8 @@ function giveGuidance(predictions){
   obstacles.forEach(p=>{
     const xCenter = p.bbox[0] + p.bbox[2]/2;
     let dir = 'ahead';
-    if(xCenter < canvas.width/3) dir = 'on your left';
-    else if(xCenter > 2*canvas.width/3) dir = 'on your right';
+    if(xCenter < canvas.width/3) dir = 'on your right';
+    else if(xCenter > 2*canvas.width/3) dir = 'on your left';
 
     let warning = '';
     if(Math.max(p.bbox[2], p.bbox[3]) > 150) warning = ', it is close';
